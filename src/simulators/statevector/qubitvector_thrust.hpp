@@ -315,13 +315,11 @@ public:
 
   // Return the expectation value of an N-qubit Pauli matrix.
   // The Pauli is input as a length N string of I,X,Y,Z characters.
-  double expval_pauli(const reg_t &qubits, const std::string &pauli,
-                      const complex_t &coeff = 1) const;
+  double expval_pauli(const reg_t &qubits, const std::string &pauli,const complex_t initial_phase=1.0) const;
   //for multi-chunk inter chunk expectation
   double expval_pauli(const reg_t &qubits, const std::string &pauli,
                       const QubitVectorThrust<data_t>& pair_chunk,
-                      const uint_t z_count,const uint_t z_count_pair,
-                      const complex_t &coeff = 1) const;
+                      const uint_t z_count,const uint_t z_count_pair,const complex_t initial_phase=1.0) const;
 
 
   //-----------------------------------------------------------------------
@@ -615,7 +613,7 @@ cvector_t<data_t> QubitVectorThrust<data_t>::vector() const
 {
   cvector_t<data_t> ret(data_size_, 0.);
 
-  chunk_->CopyOut((thrust::complex<data_t>*)&ret[0]);
+  chunk_->CopyOut((thrust::complex<data_t>*)&ret[0], data_size_);
 
 #ifdef AER_DEBUG
   DebugMsg("vector");
@@ -637,7 +635,7 @@ template <typename data_t>
 AER::Vector<std::complex<data_t>> QubitVectorThrust<data_t>::copy_to_vector() const 
 {
   cvector_t<data_t> ret(data_size_, 0.);
-  chunk_->CopyOut((thrust::complex<data_t>*)&ret[0]);
+  chunk_->CopyOut((thrust::complex<data_t>*)&ret[0], data_size_);
 
 #ifdef AER_DEBUG
   DebugMsg("copy_to_vector");
@@ -652,7 +650,7 @@ AER::Vector<std::complex<data_t>> QubitVectorThrust<data_t>::move_to_vector()
   std::complex<data_t>* pRet;
   pRet = reinterpret_cast<std::complex<data_t>*>(malloc(sizeof(std::complex<data_t>) * data_size_));
 
-  chunk_->CopyOut((thrust::complex<data_t>*)pRet);
+  chunk_->CopyOut((thrust::complex<data_t>*)pRet, data_size_);
 
   const auto vec = AER::Vector<std::complex<data_t>>::move_from_buffer(data_size_, pRet);
 
@@ -1117,7 +1115,7 @@ void QubitVectorThrust<data_t>::initialize_from_vector(const cvector_t<double> &
     tmp[i] = statevec[i];
   }
 
-  chunk_->CopyIn((thrust::complex<data_t>*)&tmp[0]);
+  chunk_->CopyIn((thrust::complex<data_t>*)&tmp[0], data_size_);
 
 #ifdef AER_DEBUG
   DebugMsg("initialize_from_vector");
@@ -1138,7 +1136,7 @@ void QubitVectorThrust<data_t>::initialize_from_data(const std::complex<data_t>*
   DebugMsg("calling initialize_from_data");
 #endif
 
-  chunk_->CopyIn((thrust::complex<data_t>*)(statevec));
+  chunk_->CopyIn((thrust::complex<data_t>*)(statevec), data_size_);
 
 #ifdef AER_DEBUG
   DebugMsg("initialize_from_data");
@@ -3470,12 +3468,11 @@ class expval_pauli_Z_func : public GateFuncBase<data_t>
 {
 protected:
   uint_t z_mask_;
-  thrust::complex<data_t> phase_;
+
 public:
-  expval_pauli_Z_func(uint_t z,std::complex<data_t> p)
+  expval_pauli_Z_func(uint_t z)
   {
     z_mask_ = z;
-    phase_ = p;
   }
 
   bool is_diagonal(void)
@@ -3492,7 +3489,6 @@ public:
     vec = this->data_;
 
     q0 = vec[i];
-    q0 = phase_ * q0;
     ret = q0.real()*q0.real() + q0.imag()*q0.imag();
 
     if(z_mask_ != 0){
@@ -3574,8 +3570,7 @@ public:
 
 template <typename data_t>
 double QubitVectorThrust<data_t>::expval_pauli(const reg_t &qubits,
-                                               const std::string &pauli,
-                                               const complex_t &coeff) const 
+                                               const std::string &pauli,const complex_t initial_phase) const 
 {
   uint_t x_mask, z_mask, num_y, x_max;
   std::tie(x_mask, z_mask, num_y, x_max) = pauli_masks_and_phase(qubits, pauli);
@@ -3584,17 +3579,16 @@ double QubitVectorThrust<data_t>::expval_pauli(const reg_t &qubits,
   if (x_mask + z_mask == 0) {
     return norm();
   }
+  
+  // specialize x_max == 0
+  if(x_mask == 0) {
+    return apply_function_sum( expval_pauli_Z_func<data_t>(z_mask) );
+  }
 
   // Compute the overall phase of the operator.
   // This is (-1j) ** number of Y terms modulo 4
-  auto phase = std::complex<data_t>(coeff);
+  auto phase = std::complex<data_t>(initial_phase);
   add_y_phase(num_y, phase);
-
-  // specialize x_max == 0
-  if(x_mask == 0) {
-    return apply_function_sum( expval_pauli_Z_func<data_t>(z_mask, phase) );
-  }
-
   return apply_function_sum( expval_pauli_XYZ_func<data_t>(x_mask, z_mask, x_max, phase) );
 }
 
@@ -3666,8 +3660,7 @@ template <typename data_t>
 double QubitVectorThrust<data_t>::expval_pauli(const reg_t &qubits,
                                                const std::string &pauli,
                                                const QubitVectorThrust<data_t>& pair_chunk,
-                                               const uint_t z_count,const uint_t z_count_pair,
-                                               const complex_t &coeff) const 
+                                               const uint_t z_count,const uint_t z_count_pair,const complex_t initial_phase) const 
 {
   uint_t x_mask, z_mask, num_y, x_max;
   std::tie(x_mask, z_mask, num_y, x_max) = pauli_masks_and_phase(qubits, pauli);
@@ -3720,7 +3713,7 @@ double QubitVectorThrust<data_t>::expval_pauli(const reg_t &qubits,
 
   // Compute the overall phase of the operator.
   // This is (-1j) ** number of Y terms modulo 4
-  auto phase = std::complex<data_t>(coeff);
+  auto phase = std::complex<data_t>(initial_phase);
   add_y_phase(num_y, phase);
 
   ret = apply_function_sum( expval_pauli_inter_chunk_func<data_t>(x_mask, z_mask, phase, pair_ptr,z_count,z_count_pair) );
