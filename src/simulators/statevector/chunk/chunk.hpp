@@ -256,7 +256,7 @@ public:
   }
 
   //get chopped vector
-  void chop_vector(std::complex<data_t>& vector, reg_t& index,double epsilon)
+  void chop_vector(std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon)
   {
     chunk_container_.lock()->chop_vector(chunk_pos_,vector,index,epsilon);
   }

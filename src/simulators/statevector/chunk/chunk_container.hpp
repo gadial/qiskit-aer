@@ -312,7 +312,7 @@ public:
     epsilon_ = eps;
   }
   __host__ __device__
-    bool operator()(thrust::complex<data_t>& x) { return (thrust::abs(x) > epsilon_); }
+    bool operator()(const thrust::complex<data_t> x) { return (thrust::abs(x) > epsilon_); }
 };
 
 //============================================================================
@@ -438,7 +438,7 @@ public:
   virtual thrust::complex<double> norm(uint_t iChunk,uint_t stride = 1,bool dot = true) const = 0;
 
   //get chopped vector
-  virtual void chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon) = 0;
+  virtual void chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon) = 0;
 
   size_t size_of_complex(void)
   {

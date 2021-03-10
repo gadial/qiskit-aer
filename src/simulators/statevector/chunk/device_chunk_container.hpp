@@ -181,7 +181,7 @@ public:
   void queue_blocked_gate(uint_t iChunk,char gate,uint_t qubit,uint_t mask,const std::complex<double>* pMat = NULL);
 
   //get chopped vector
-  void chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon);
+  void chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon);
 };
 
 template <typename data_t>
@@ -1157,7 +1157,7 @@ void DeviceChunkContainer<data_t>::apply_blocked_gates(uint_t iChunk)
 
 
 template <typename data_t>
-void DeviceChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon)
+void DeviceChunkContainer<data_t>::chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon)
 {
   std::shared_ptr<Chunk<data_t>> buffer;
   thrust::complex<data_t>* pRet;
@@ -1167,7 +1167,7 @@ void DeviceChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_
   buffer = this->MapBufferChunk();    //use buffer chunk for temporary to save chopped vector
 
   //chop vector
-  pRet = thrust::copy_if(thrust::device, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon((data_t)epsilon));
+  pRet = thrust::copy_if(thrust::device, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon<data_t>((data_t)epsilon));
   uint_t nchop = (uint_t)(pRet - buffer->pointer());
 
   vector.resize(nchop);
@@ -1183,7 +1183,7 @@ void DeviceChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_
   thrust::sequence(thrust::device,pSeq,pSeq+(1ull << this->chunk_bits_));
 
   //get index for chopped vector
-  thrust::copy_if(thrust::device, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon((data_t)epsilon));
+  thrust::copy_if(thrust::device, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon<data_t>((data_t)epsilon));
   thrust::copy_n(pIndex,nchop,&index[0]);
 
   this->UnmapBuffer(buffer);

@@ -112,7 +112,7 @@ public:
   reg_t sample_measure(uint_t iChunk,const std::vector<double> &rnds, uint_t stride = 1, bool dot = true) const;
   thrust::complex<double> norm(uint_t iChunk,uint_t stride = 1,bool dot = true) const;
 
-  void chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon);
+  void chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon);
 
 };
 
@@ -367,7 +367,7 @@ thrust::complex<double> HostChunkContainer<data_t>::norm(uint_t iChunk, uint_t s
 }
 
 template <typename data_t>
-void HostChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon)
+void HostChunkContainer<data_t>::chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon)
 {
   std::shared_ptr<Chunk<data_t>> buffer;
   thrust::complex<data_t>* pRet;
@@ -376,9 +376,9 @@ void HostChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_t>
 
   //chop vector
   if(omp_get_num_threads() == 1)
-    pRet = thrust::copy_if(thrust::omp::par, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon(epsilon));
+    pRet = thrust::copy_if(thrust::omp::par, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon<data_t>(epsilon));
   else
-    pRet = thrust::copy_if(thrust::seq, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon(epsilon));
+    pRet = thrust::copy_if(thrust::seq, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon<data_t>(epsilon));
   uint_t nchop = (uint_t)(pRet - buffer->pointer());
 
   vector.resize(nchop);
@@ -398,9 +398,9 @@ void HostChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_t>
 
   //get index for chopped vector
   if(omp_get_num_threads() == 1)
-    thrust::copy_if(thrust::omp::par, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon((data_t)epsilon));
+    thrust::copy_if(thrust::omp::par, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon<data_t>((data_t)epsilon));
   else
-    thrust::copy_if(thrust::seq, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon((data_t)epsilon));
+    thrust::copy_if(thrust::seq, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon<data_t>((data_t)epsilon));
   thrust::copy_n(pIndex,nchop,&index[0]);
 
   this->UnmapBuffer(buffer);
