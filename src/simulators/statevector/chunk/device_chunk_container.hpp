@@ -129,8 +129,8 @@ public:
 
   void CopyIn(std::shared_ptr<Chunk<data_t>> src,uint_t iChunk);
   void CopyOut(std::shared_ptr<Chunk<data_t>> src,uint_t iChunk);
-  void CopyIn(thrust::complex<data_t>* src,uint_t iChunk);
-  void CopyOut(thrust::complex<data_t>* dest,uint_t iChunk);
+  void CopyIn(thrust::complex<data_t>* src,uint_t iChunk, uint_t size);
+  void CopyOut(thrust::complex<data_t>* dest,uint_t iChunk, uint_t size);
   void Swap(std::shared_ptr<Chunk<data_t>> src,uint_t iChunk);
 
   void Zero(uint_t iChunk,uint_t count);
@@ -180,6 +180,8 @@ public:
   //queue gate for blocked execution
   void queue_blocked_gate(uint_t iChunk,char gate,uint_t qubit,uint_t mask,const std::complex<double>* pMat = NULL);
 
+  //get chopped vector
+  void chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon);
 };
 
 template <typename data_t>
@@ -502,18 +504,21 @@ void DeviceChunkContainer<data_t>::CopyOut(std::shared_ptr<Chunk<data_t>> dest,u
 }
 
 template <typename data_t>
-void DeviceChunkContainer<data_t>::CopyIn(thrust::complex<data_t>* src,uint_t iChunk)
+void DeviceChunkContainer<data_t>::CopyIn(thrust::complex<data_t>* src,uint_t iChunk, uint_t size)
 {
-  uint_t size = 1ull << this->chunk_bits_;
+  uint_t this_size = 1ull << this->chunk_bits_;
+  if(this_size < size) throw std::runtime_error("CopyIn chunk size is less than provided size");
+  
   set_device();
-
   thrust::copy_n(src,size,data_.begin() + (iChunk << this->chunk_bits_));
 }
 
 template <typename data_t>
-void DeviceChunkContainer<data_t>::CopyOut(thrust::complex<data_t>* dest,uint_t iChunk)
+void DeviceChunkContainer<data_t>::CopyOut(thrust::complex<data_t>* dest,uint_t iChunk, uint_t size)
 {
-  uint_t size = 1ull << this->chunk_bits_;
+  uint_t this_size = 1ull << this->chunk_bits_;
+  if(this_size < size) throw std::runtime_error("CopyOut chunk size is less than provided size");
+  
   set_device();
   thrust::copy_n(data_.begin() + (iChunk << this->chunk_bits_),size,dest);
 }
@@ -1148,6 +1153,40 @@ void DeviceChunkContainer<data_t>::apply_blocked_gates(uint_t iChunk)
   num_blocked_gates_[iBlock] = 0;
   num_blocked_matrix_[iBlock] = 0;
 
+}
+
+
+template <typename data_t>
+void DeviceChunkContainer<data_t>::chop_vector(uint_t iChunk, std::vector<std::complex<data_t>>& vector, reg_t& index,double epsilon)
+{
+  std::shared_ptr<Chunk<data_t>> buffer;
+  thrust::complex<data_t>* pRet;
+
+  set_device();
+
+  buffer = this->MapBufferChunk();    //use buffer chunk for temporary to save chopped vector
+
+  //chop vector
+  pRet = thrust::copy_if(thrust::device, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon<data_t>((data_t)epsilon));
+  uint_t nchop = (uint_t)(pRet - buffer->pointer());
+
+  vector.resize(nchop);
+  index.resize(nchop);
+  thrust::copy_n(buffer->pointer(),nchop,&vector[0]);
+
+  uint_t* pIndex;
+  uint_t* pSeq;
+  pIndex = (uint_t*)buffer->pointer();
+  pSeq = pIndex + nchop;
+
+  //set key
+  thrust::sequence(thrust::device,pSeq,pSeq+(1ull << this->chunk_bits_));
+
+  //get index for chopped vector
+  thrust::copy_if(thrust::device, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon<data_t>((data_t)epsilon));
+  thrust::copy_n(pIndex,nchop,&index[0]);
+
+  this->UnmapBuffer(buffer);
 }
 
 //------------------------------------------------------------------------------
