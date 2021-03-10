@@ -959,6 +959,31 @@ std::map<std::string, T> vec2ket(const T* const vec, uint_t dim, double epsilon,
   return ketmap;
 }
 
+template <typename T>
+std::map<std::string, T> vec2ket(const std::vector<T> &vec, const reg_t& index, uint_t dim, uint_t base) {
+
+  bool hex_output = false;
+  if (base == 16) {
+    hex_output = true;
+    base = 2; // If hexadecimal strings we convert to bin first
+  }
+  // check vector length
+  double n = std::log(dim) / std::log(base);
+  uint_t nint = std::trunc(n);
+  if (std::abs(nint - n) > 1e-5) {
+    std::stringstream ss;
+    ss << "vec2ket (vector dimension " << dim << " is not of size " << base << "^n)";
+    throw std::invalid_argument(ss.str());
+  }
+  std::map<std::string, T> ketmap;
+  for (size_t k = 0; k < vec.size(); ++k) {
+    std::string key = (hex_output) ? Utils::int2hex(index[k])
+                                   : Utils::int2string(index[k], base, nint);
+    ketmap.insert({key, vec[k]});
+  }
+  return ketmap;
+}
+
 //==============================================================================
 // Implementations: Bit conversions
 //==============================================================================

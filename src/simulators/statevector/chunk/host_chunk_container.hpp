@@ -112,6 +112,8 @@ public:
   reg_t sample_measure(uint_t iChunk,const std::vector<double> &rnds, uint_t stride = 1, bool dot = true) const;
   thrust::complex<double> norm(uint_t iChunk,uint_t stride = 1,bool dot = true) const;
 
+  void chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon);
+
 };
 
 template <typename data_t>
@@ -361,6 +363,45 @@ thrust::complex<double> HostChunkContainer<data_t>::norm(uint_t iChunk, uint_t s
   return sum;
 }
 
+template <typename data_t>
+void HostChunkContainer<data_t>::chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon)
+{
+  std::shared_ptr<Chunk<data_t>> buffer;
+  thrust::complex<data_t>* pRet;
+
+  buffer = this->MapBufferChunk();    //use buffer chunk for temporary to save chopped vector
+
+  //chop vector
+  if(omp_get_num_threads() == 1)
+    pRet = thrust::copy_if(thrust::omp::par, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon(epsilon));
+  else
+    pRet = thrust::copy_if(thrust::seq, data_.begin() + (iChunk << this->chunk_bits_), data_.begin() + ((iChunk+1) << this->chunk_bits_),buffer->pointer(), complex_epsilon(epsilon));
+  uint_t nchop = (uint_t)(pRet - buffer->pointer());
+
+  vector.resize(nchop);
+  index.resize(nchop);
+  thrust::copy_n(buffer->pointer(),nchop,&vector[0]);
+
+  uint_t* pIndex;
+  uint_t* pSeq;
+  pIndex = (uint_t*)buffer->pointer();
+  pSeq = pIndex + nchop;
+
+  //set key
+  if(omp_get_num_threads() == 1)
+    thrust::sequence(thrust::omp::par,pSeq,pSeq+(1ull << this->chunk_bits_));
+  else
+    thrust::sequence(thrust::seq,pSeq,pSeq+(1ull << this->chunk_bits_));
+
+  //get index for chopped vector
+  if(omp_get_num_threads() == 1)
+    thrust::copy_if(thrust::omp::par, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon((data_t)epsilon));
+  else
+    thrust::copy_if(thrust::seq, pSeq, pSeq+(1ull << this->chunk_bits_),data_.begin() + (iChunk << this->chunk_bits_),pIndex, complex_epsilon((data_t)epsilon));
+  thrust::copy_n(pIndex,nchop,&index[0]);
+
+  this->UnmapBuffer(buffer);
+}
 //------------------------------------------------------------------------------
 } // end namespace QV
 } // end namespace AER

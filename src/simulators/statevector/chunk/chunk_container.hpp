@@ -320,6 +320,19 @@ struct complex_less
     __host__ __device__ bool operator()(const thrust::complex<data_t> &lhs, const thrust::complex<data_t> &rhs) const {return lhs.real() < rhs.real();}
 }; // end less
 
+template <typename data_t>
+class complex_epsilon
+{
+protected:
+  data_t epsilon_;
+public:
+  complex_epsilon(data_t eps)
+  {
+    epsilon_ = eps;
+  }
+  __host__ __device__
+    bool operator()(thrust::complex<data_t>& x) { return (thrust::abs(x) > epsilon_); }
+};
 
 //============================================================================
 // chunk container base class
@@ -443,6 +456,8 @@ public:
   virtual reg_t sample_measure(uint_t iChunk,const std::vector<double> &rnds, uint_t stride = 1, bool dot = true) const = 0;
   virtual thrust::complex<double> norm(uint_t iChunk,uint_t stride = 1,bool dot = true) const = 0;
 
+  //get chopped vector
+  virtual void chop_vector(uint_t iChunk, std::complex<data_t>& vector, reg_t& index,double epsilon) = 0;
 
   size_t size_of_complex(void)
   {
